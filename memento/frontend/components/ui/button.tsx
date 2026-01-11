@@ -1,11 +1,12 @@
-import * as React from "react"
-import { Slot } from "@radix-ui/react-slot"
-import { cva, type VariantProps } from "class-variance-authority"
-
-import { cn } from "@/lib/utils"
+"use client";
+import * as React from "react";
+import { Slot } from "@radix-ui/react-slot";
+import { cva, type VariantProps } from "class-variance-authority";
+import { motion } from "framer-motion";
+import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap text-sm font-medium transition-all disabled:pointer-events-none disabled:opacity-50 [&_svg]:pointer-events-none [&_svg:not([class*='size-'])]:size-4 shrink-0 [&_svg]:shrink-0 outline-none focus-visible:border-ring focus-visible:ring-ring/50 focus-visible:ring-[3px] aria-invalid:ring-destructive/20 dark:aria-invalid:ring-destructive/40 aria-invalid:border-destructive",
   {
     variants: {
       variant: {
@@ -13,7 +14,7 @@ const buttonVariants = cva(
         destructive:
           "bg-destructive text-white hover:bg-destructive/90 focus-visible:ring-destructive/20 dark:focus-visible:ring-destructive/40 dark:bg-destructive/60",
         outline:
-          "border bg-background shadow-xs hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
+          "border bg-background rounded-md hover:bg-accent hover:text-accent-foreground dark:bg-input/30 dark:border-input dark:hover:bg-input/50",
         secondary:
           "bg-secondary text-secondary-foreground hover:bg-secondary/80",
         ghost:
@@ -34,29 +35,96 @@ const buttonVariants = cva(
       size: "default",
     },
   }
-)
+);
 
 function Button({
   className,
   variant = "default",
   size = "default",
   asChild = false,
+  onClick,
   ...props
 }: React.ComponentProps<"button"> &
   VariantProps<typeof buttonVariants> & {
-    asChild?: boolean
+    asChild?: boolean;
   }) {
-  const Comp = asChild ? Slot : "button"
+  const [ripples, setRipples] = React.useState<
+    Array<{ id: number; x: number; y: number }>
+  >([]);
+
+  const handleClick = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const button = e.currentTarget;
+    const rect = button.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    const newRipple = {
+      id: Date.now(),
+      x,
+      y,
+    };
+
+    setRipples((prev) => [...prev, newRipple]);
+
+    setTimeout(() => {
+      setRipples((prev) => prev.filter((ripple) => ripple.id !== newRipple.id));
+    }, 600);
+
+    if (onClick) {
+      onClick(e);
+    }
+  };
+
+  if (asChild) {
+    return (
+      <Slot
+        data-slot="button"
+        data-variant={variant}
+        data-size={size}
+        className={cn(buttonVariants({ variant, size, className }))}
+        {...props}
+      />
+    );
+  }
 
   return (
-    <Comp
+    <motion.button
       data-slot="button"
       data-variant={variant}
       data-size={size}
-      className={cn(buttonVariants({ variant, size, className }))}
+      className={cn(
+        buttonVariants({ variant, size, className }),
+        "relative overflow-hidden"
+      )}
+      onClick={handleClick}
+      whileTap={{ scale: 0.95 }}
+      transition={{ duration: 0.1 }}
       {...props}
-    />
-  )
+    >
+      {props.children}
+
+      {/* Ripple effect */}
+      {ripples.map((ripple) => (
+        <motion.span
+          key={ripple.id}
+          className="absolute rounded-full bg-white/40 pointer-events-none"
+          style={{
+            left: ripple.x,
+            top: ripple.y,
+          }}
+          initial={{ width: 0, height: 0, opacity: 1 }}
+          animate={{
+            width: 300,
+            height: 300,
+            opacity: 0,
+            x: -150,
+            y: -150,
+          }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        />
+      ))}
+    </motion.button>
+  );
 }
 
-export { Button, buttonVariants }
+export { Button, buttonVariants };

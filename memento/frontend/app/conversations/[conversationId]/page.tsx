@@ -109,7 +109,7 @@ export default function ConversationDetailPage() {
           <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
             <Button
               onClick={() => router.push("/conversations")}
-              variant="ghost"
+              variant="outline"
             >
               <ArrowLeft size={20} className="mr-2" />
               Back to Conversations
@@ -127,17 +127,17 @@ export default function ConversationDetailPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b">
+      <nav className="bg-white border-b mt-4">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <Button
             onClick={() => router.push("/conversations")}
-            variant="ghost"
+            variant="outline"
             className="mb-2"
           >
             <ArrowLeft size={20} className="mr-2" />
             Back to Conversations
           </Button>
-          <div className="flex items-center gap-2 text-sm text-gray-500">
+          <div className="mt-2 flex items-center gap-2 text-sm text-gray-500">
             <Calendar size={16} />
             <span>{formatDate(conversation.createdAt)}</span>
           </div>
@@ -146,15 +146,16 @@ export default function ConversationDetailPage() {
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Summary Section */}
-        <Card className="mb-6">
+        <Card className="mb-6 border-none">
           <CardHeader>
             <div className="flex items-center gap-2">
-              <FileText size={24} className="text-blue-500" />
-              <CardTitle className="text-2xl">Summary</CardTitle>
+              <CardTitle className="text-2xl font-baskerville text-3xl">
+                Summary
+              </CardTitle>
             </div>
           </CardHeader>
           <CardContent>
-            <p className="text-lg text-gray-700 leading-relaxed">
+            <p className="text-lg text-gray-700 leading-relaxed tracking-tight">
               {conversation.summary}
             </p>
           </CardContent>
@@ -163,13 +164,15 @@ export default function ConversationDetailPage() {
         {/* Full Transcript Section */}
         <Card>
           <CardHeader>
-            <CardTitle className="text-2xl">Conversation Transcript</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-3xl font-baskerville ">
+              Conversation Transcript
+            </CardTitle>
+            <CardDescription className="tracking-tight">
               {conversation.transcript.length} message
               {conversation.transcript.length !== 1 ? "s" : ""}
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="tracking-tight">
             <div className="space-y-4">
               {conversation.transcript.map((message, index) => (
                 <div
@@ -186,7 +189,7 @@ export default function ConversationDetailPage() {
                     }`}
                   >
                     <div className="text-xs font-semibold mb-1 opacity-75">
-                      {message.speaker === "user" ? "You" : "Assistant"}
+                      {message.speaker === "user" ? "You" : "Nikhil"}
                     </div>
                     <div className="text-sm leading-relaxed whitespace-pre-wrap">
                       {message.text}

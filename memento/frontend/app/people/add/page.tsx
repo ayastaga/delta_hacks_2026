@@ -141,8 +141,9 @@ export default function AddPersonPage() {
             href="/people"
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
           >
-            <ArrowLeft size={20} />
-            <span>Back to People</span>
+            <Button variant={"outline"}>
+              <ArrowLeft size={20} /> Back to People
+            </Button>
           </Link>
         </div>
       </nav>

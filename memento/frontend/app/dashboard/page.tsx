@@ -15,6 +15,7 @@ import {
 import Image from "next/image";
 import { Users, MessageSquare, ArrowRight } from "lucide-react";
 import { useRouter } from "next/navigation";
+import { Plus } from "lucide-react";
 
 const API_URL = "http://localhost:8080/api";
 
@@ -97,7 +98,7 @@ export default function DashboardPage() {
       const date = new Date(conversation.createdAt);
       if (isNaN(date.getTime())) return "Conversation";
 
-      return `Conversation – ${date.toLocaleDateString("en-US", {
+      return `${conversation.summary} - ${date.toLocaleDateString("en-US", {
         month: "short",
         day: "numeric",
         year: "numeric",
@@ -171,47 +172,29 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            {user?.profileImage && (
-              <div className="relative w-10 h-10">
-                <Image
-                  src={user.profileImage}
-                  alt={user.name}
-                  fill
-                  className="rounded-full object-cover"
-                />
-              </div>
-            )}
-            <h1 className="text-2xl font-bold">
-              Welcome, <span className="capitalize">{user?.name}</span>
-            </h1>
-          </div>
-          <div className="flex items-center gap-4">
-            <Button onClick={() => router.push("/profile")} variant="outline">
-              Profile
-            </Button>
-            <Button variant="outline">Talk now </Button>
-
-            <Button onClick={logout} variant="outline">
-              Logout
-            </Button>
-          </div>
-        </div>
-      </nav>
-
+    <div className="min-h-screen ">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        <div className="font-baskerville font-semibold text-7xl text-center border-b pb-7 mb-2">
+          Welcome, <span className="text-custom capitalize">{user?.name}</span>
+        </div>
+
+        <div className="mt-8">
+          <Button className="w-full" onClick={() => router.push("/people/add")}>
+            <Plus size={20} className="mr-2 " />
+            Add a Person to Your Memories
+          </Button>
+        </div>
+
         {/* Recent Conversations Section */}
-        <div className="mb-8">
+        <div className="mt-5 p-3 mb-3">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-semibold flex items-center gap-2">
-              Recent Conversations
+            <h2 className="font-baskerville  text-3xl tracking-tight flex items-center gap-2">
+              Conversations
             </h2>
             <Button
               onClick={() => router.push("/conversations")}
               variant="outline"
+              className="tracking-tight"
             >
               View All
               <ArrowRight size={16} className="ml-2" />
@@ -261,16 +244,20 @@ export default function DashboardPage() {
         </div>
 
         {/* People Section */}
-        <div className="mb-8">
+        <div className=" p-3 mb-2">
           <div className="flex justify-between items-center mb-6">
-            <h2 className="text-2xl font-semibold flex items-center gap-2">
+            <h2 className="font-baskerville text-3xl tracking-tight flex items-center gap-2">
               People You Know
             </h2>
-            <Button onClick={() => router.push("/people")} variant="outline">
-              View All
-              <ArrowRight size={16} className="ml-2" />
-            </Button>
           </div>
+          <Button
+            onClick={() => router.push("/people")}
+            className="w-full mb-5"
+            variant="outline"
+          >
+            View All
+            <ArrowRight size={16} className="ml-2" />
+          </Button>
 
           {people.length === 0 ? (
             <Card>
@@ -323,6 +310,25 @@ export default function DashboardPage() {
           )}
         </div>
       </div>
+
+      <nav className="bg-white fixed bottom-0 border w-full">
+        <div className="max-w-7xl mx-auto pt-6 px-4 sm:px-6 lg:px-8 py-4 flex gap-4">
+          <Button variant="outline" className="flex-1 ">
+            Disconnect
+          </Button>
+
+          <Button
+            onClick={() => router.push("/profile")}
+            variant="outline"
+            className="flex-1"
+          >
+            Profile
+          </Button>
+          <Button onClick={logout} variant="outline" className="flex-1">
+            Logout
+          </Button>
+        </div>
+      </nav>
     </div>
   );
 }

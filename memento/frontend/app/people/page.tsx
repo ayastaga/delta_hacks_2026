@@ -86,13 +86,14 @@ export default function PeoplePage() {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
+        <div className="max-w-7xl mt-4 mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
           <Link
             href="/dashboard"
             className="flex items-center gap-2 text-gray-600 hover:text-gray-900"
           >
-            <ArrowLeft size={20} />
-            <span>Back to Dashboard</span>
+            <Button variant={"outline"}>
+              <ArrowLeft size={20} /> Back to Dashboard
+            </Button>
           </Link>
           <Button onClick={() => router.push("/people/add")}>
             <Plus size={20} className="mr-2" />

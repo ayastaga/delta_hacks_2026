@@ -12,7 +12,7 @@ import Link from "next/link";
 
 export default function Navbar() {
   return (
-    <div className="fixed top-0 w-full">
+    <div className="fixed top-0 pt-10 w-full">
       <NavigationMenu className="p-5 border w-full">
         <NavigationMenuList>
           <NavigationMenuItem>

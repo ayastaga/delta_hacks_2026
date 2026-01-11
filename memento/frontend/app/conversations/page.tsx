@@ -158,17 +158,17 @@ export default function ConversationsPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <nav className="bg-white border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
+      <nav className="bg-white border">
+        <div className="max-w-7xl mt-4 mx-auto px-4 sm:px-6 lg:px-8 py-4">
           <Button
             onClick={() => router.push("/dashboard")}
-            variant="ghost"
-            className="mb-2"
+            variant="outline"
+            className="mb-2 mt-4"
           >
             <ArrowLeft size={20} className="mr-2" />
             Back to Dashboard
           </Button>
-          <h1 className="text-3xl font-bold">All Conversations</h1>
+          <h1 className="text-3xl mt-4 font-bold">All Conversations</h1>
         </div>
       </nav>
 
