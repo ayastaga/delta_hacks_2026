@@ -19,11 +19,13 @@ db = client[os.getenv('DATABASE_NAME')]
 users_collection = db['users']
 items_collection = db['items']
 people_collection = db['people']
+conversations_collection = db['conversations']
 
 # Create indexes for efficient querying
 users_collection.create_index('email', unique=True)
 items_collection.create_index([('user_id', 1), ('created_at', -1)])
 people_collection.create_index([('user_id', 1), ('created_at', -1)])
+conversations_collection.create_index([('user_id', 1), ('created_at', -1)])
 
 SECRET_KEY = os.getenv('SECRET_KEY')
 
@@ -416,6 +418,118 @@ def delete_person(person_id):
     except Exception as e:
         print(f"Delete person error: {str(e)}")
         return jsonify({'error': 'Failed to delete person'}), 500
+
+@app.route('/api/conversations', methods=['GET'])
+@auth_required
+def get_conversations():
+    """Get all conversations for the authenticated user"""
+    try:
+        limit = request.args.get('limit', type=int)
+        
+        query = {'user_id': request.user_id}
+        conversations_query = conversations_collection.find(query).sort('createdAt', -1)
+        
+        if limit:
+            conversations_query = conversations_query.limit(limit)
+        
+        conversations = list(conversations_query)
+        
+        for conversation in conversations:
+            conversation['_id'] = str(conversation['_id'])
+            # Handle both createdAt and created_at fields
+            if 'createdAt' in conversation and isinstance(conversation['createdAt'], datetime.datetime):
+                conversation['createdAt'] = conversation['createdAt'].isoformat()
+            elif 'created_at' in conversation and isinstance(conversation['created_at'], datetime.datetime):
+                conversation['createdAt'] = conversation['created_at'].isoformat()
+                del conversation['created_at']
+        
+        return jsonify(conversations), 200
+    except Exception as e:
+        print(f"Get conversations error: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/conversations/<conversation_id>', methods=['GET'])
+@auth_required
+def get_conversation(conversation_id):
+    """Get a specific conversation by ID"""
+    try:
+        conversation = conversations_collection.find_one({
+            '_id': ObjectId(conversation_id),
+            'user_id': request.user_id
+        })
+        
+        if not conversation:
+            return jsonify({'error': 'Conversation not found'}), 404
+        
+        conversation['_id'] = str(conversation['_id'])
+        # Handle both createdAt and created_at fields
+        if 'createdAt' in conversation and isinstance(conversation['createdAt'], datetime.datetime):
+            conversation['createdAt'] = conversation['createdAt'].isoformat()
+        elif 'created_at' in conversation and isinstance(conversation['created_at'], datetime.datetime):
+            conversation['createdAt'] = conversation['created_at'].isoformat()
+            del conversation['created_at']
+        
+        return jsonify(conversation), 200
+    except Exception as e:
+        print(f"Get conversation error: {str(e)}")
+        return jsonify({'error': 'Internal server error'}), 500
+
+@app.route('/api/conversations', methods=['POST'])
+@auth_required
+def create_conversation():
+    """Create a new conversation"""
+    try:
+        data = request.json
+        summary = data.get('summary')
+        transcript = data.get('transcript')
+        
+        if not summary or not transcript:
+            return jsonify({'error': 'Summary and transcript are required'}), 400
+        
+        # Validate transcript is an array
+        if not isinstance(transcript, list):
+            return jsonify({'error': 'Transcript must be an array of messages'}), 400
+        
+        # Validate each message has speaker and text
+        for msg in transcript:
+            if not isinstance(msg, dict) or 'speaker' not in msg or 'text' not in msg:
+                return jsonify({'error': 'Each message must have speaker and text fields'}), 400
+        
+        conversation = {
+            'user_id': request.user_id,
+            'summary': summary,
+            'transcript': transcript,
+            'createdAt': datetime.datetime.utcnow(),
+            'updatedAt': datetime.datetime.utcnow()
+        }
+        
+        result = conversations_collection.insert_one(conversation)
+        conversation['_id'] = str(result.inserted_id)
+        conversation['createdAt'] = conversation['createdAt'].isoformat()
+        conversation['updatedAt'] = conversation['updatedAt'].isoformat()
+        
+        return jsonify(conversation), 201
+    except Exception as e:
+        print(f"Create conversation error: {str(e)}")
+        return jsonify({'error': 'Failed to create conversation'}), 500
+
+@app.route('/api/conversations/<conversation_id>', methods=['DELETE'])
+@auth_required
+def delete_conversation(conversation_id):
+    """Delete a conversation"""
+    try:
+        result = conversations_collection.delete_one({
+            '_id': ObjectId(conversation_id),
+            'user_id': request.user_id
+        })
+        
+        if result.deleted_count == 0:
+            return jsonify({'error': 'Conversation not found'}), 404
+        
+        return jsonify({'message': 'Conversation deleted successfully'}), 200
+    except Exception as e:
+        print(f"Delete conversation error: {str(e)}")
+        return jsonify({'error': 'Failed to delete conversation'}), 500
 
 if __name__ == '__main__':
     app.run(debug=True, port=8080)
