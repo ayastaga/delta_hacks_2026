@@ -7,27 +7,102 @@ import jwt
 import datetime
 import os
 from dotenv import load_dotenv
+import traceback
+import cv2
+import numpy as np
+import base64
+from insightface.app import FaceAnalysis
 
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
 
-# MongoDB connection
-client = MongoClient(os.getenv('MONGODB_URI'))
-db = client[os.getenv('DATABASE_NAME')]
-users_collection = db['users']
-items_collection = db['items']
-people_collection = db['people']
-conversations_collection = db['conversations']
+# Fix CORS configuration
+CORS(app, resources={
+    r"/api/*": {
+        "origins": ["http://localhost:3000", "http://localhost:3001"],
+        "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+        "allow_headers": ["Content-Type", "Authorization"],
+        "supports_credentials": True
+    }
+})
+
+# MongoDB connection with error handling
+try:
+    client = MongoClient(os.getenv('MONGODB_URI'))
+    db = client[os.getenv('DATABASE_NAME')]
+    users_collection = db['users']
+    items_collection = db['items']
+    people_collection = db['people']
+    conversations_collection = db['conversations']
+    
+    # Test connection
+    client.server_info()
+    print("✓ Connected to MongoDB successfully")
+except Exception as e:
+    print(f"✗ MongoDB connection failed: {e}")
+    exit(1)
 
 # Create indexes for efficient querying
-users_collection.create_index('email', unique=True)
-items_collection.create_index([('user_id', 1), ('created_at', -1)])
-people_collection.create_index([('user_id', 1), ('created_at', -1)])
-conversations_collection.create_index([('user_id', 1), ('created_at', -1)])
+try:
+    users_collection.create_index('email', unique=True)
+    items_collection.create_index([('user_id', 1), ('created_at', -1)])
+    people_collection.create_index([('user_id', 1), ('created_at', -1)])
+    conversations_collection.create_index([('user_id', 1), ('createdAt', -1)])
+    print("✓ Database indexes created")
+except Exception as e:
+    print(f"Warning: Index creation failed: {e}")
 
-SECRET_KEY = os.getenv('SECRET_KEY')
+SECRET_KEY = os.getenv('SECRET_KEY', 'your-secret-key-change-this')
+
+# Initialize face recognition model
+print("Initializing face recognition model...")
+try:
+    face_app = FaceAnalysis(
+        name="buffalo_l",
+        providers=["CPUExecutionProvider"]
+    )
+    face_app.prepare(ctx_id=0, det_size=(640, 640))
+    print("✓ Face recognition model loaded")
+except Exception as e:
+    print(f"Warning: Face recognition model failed to load: {e}")
+    face_app = None
+
+def generate_face_embedding(base64_image):
+    """Generate face embedding from base64 encoded image"""
+    if not face_app:
+        return None, "Face recognition model not available"
+    
+    try:
+        # Remove data URL prefix if present
+        if ',' in base64_image:
+            base64_image = base64_image.split(',')[1]
+        
+        # Decode base64 to image
+        img_data = base64.b64decode(base64_image)
+        nparr = np.frombuffer(img_data, np.uint8)
+        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if img is None:
+            return None, "Failed to decode image"
+        
+        # Detect faces
+        faces = face_app.get(img)
+        
+        if len(faces) == 0:
+            return None, "No face detected"
+        
+        if len(faces) > 1:
+            return None, "Multiple faces detected"
+        
+        # Extract and normalize embedding
+        embedding = faces[0].embedding.astype(np.float32)
+        embedding /= np.linalg.norm(embedding)
+        
+        return embedding.tolist(), None
+        
+    except Exception as e:
+        return None, f"Error generating embedding: {str(e)}"
 
 # Helper function to create JWT token
 def create_token(user_id):
@@ -42,7 +117,9 @@ def verify_token(token):
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=['HS256'])
         return payload['user_id']
-    except:
+    except jwt.ExpiredSignatureError:
+        return None
+    except jwt.InvalidTokenError:
         return None
 
 # Auth middleware
@@ -57,7 +134,7 @@ def auth_required(f):
         
         user_id = verify_token(token)
         if not user_id:
-            return jsonify({'error': 'Invalid token'}), 401
+            return jsonify({'error': 'Invalid or expired token'}), 401
         
         request.user_id = user_id
         return f(*args, **kwargs)
@@ -74,10 +151,26 @@ def format_user_response(user):
         'name': user['name'],
         'timezone': user.get('timezone', 'UTC'),
         'primaryCaregiver': user.get('primaryCaregiver', {}),
-        'profileImage': user.get('profileImage')  # Return image directly
+        'profileImage': user.get('profileImage')
     }
-    
     return user_data
+
+# Health check endpoint
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    try:
+        # Test MongoDB connection
+        client.server_info()
+        return jsonify({
+            'status': 'healthy',
+            'mongodb': 'connected',
+            'face_recognition': 'available' if face_app else 'unavailable'
+        }), 200
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e)
+        }), 500
 
 # Routes
 @app.route('/api/signup', methods=['POST'])
@@ -105,7 +198,7 @@ def signup():
         # Hash password
         hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt())
         
-        # Create user document - store image directly as base64 string
+        # Create user document
         user = {
             'email': email,
             'password': hashed_password,
@@ -134,7 +227,8 @@ def signup():
         
     except Exception as e:
         print(f"Signup error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/login', methods=['POST'])
 def login():
@@ -164,7 +258,8 @@ def login():
         
     except Exception as e:
         print(f"Login error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/me', methods=['GET'])
 @auth_required
@@ -178,7 +273,8 @@ def get_current_user():
         
     except Exception as e:
         print(f"Get user error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/user/update-profile-image', methods=['POST'])
 @auth_required
@@ -211,83 +307,100 @@ def update_profile_image():
         
     except Exception as e:
         print(f"Update profile image error: {str(e)}")
-        return jsonify({'error': 'Failed to update profile image'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to update profile image', 'details': str(e)}), 500
 
 # CRUD Routes for Items
 @app.route('/api/items', methods=['GET'])
 @auth_required
 def get_items():
-    items = list(items_collection.find({'user_id': request.user_id}).sort('created_at', -1))
-    for item in items:
-        item['_id'] = str(item['_id'])
-        item['created_at'] = item['created_at'].isoformat()
-    return jsonify(items), 200
+    try:
+        items = list(items_collection.find({'user_id': request.user_id}).sort('created_at', -1))
+        for item in items:
+            item['_id'] = str(item['_id'])
+            item['created_at'] = item['created_at'].isoformat()
+        return jsonify(items), 200
+    except Exception as e:
+        print(f"Get items error: {str(e)}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/items', methods=['POST'])
 @auth_required
 def create_item():
-    data = request.json
-    title = data.get('title')
-    description = data.get('description')
-    
-    if not title:
-        return jsonify({'error': 'Title is required'}), 400
-    
-    item = {
-        'user_id': request.user_id,
-        'title': title,
-        'description': description or '',
-        'created_at': datetime.datetime.utcnow()
-    }
-    
-    result = items_collection.insert_one(item)
-    item['_id'] = str(result.inserted_id)
-    item['created_at'] = item['created_at'].isoformat()
-    
-    return jsonify(item), 201
+    try:
+        data = request.json
+        title = data.get('title')
+        description = data.get('description')
+        
+        if not title:
+            return jsonify({'error': 'Title is required'}), 400
+        
+        item = {
+            'user_id': request.user_id,
+            'title': title,
+            'description': description or '',
+            'created_at': datetime.datetime.utcnow()
+        }
+        
+        result = items_collection.insert_one(item)
+        item['_id'] = str(result.inserted_id)
+        item['created_at'] = item['created_at'].isoformat()
+        
+        return jsonify(item), 201
+    except Exception as e:
+        print(f"Create item error: {str(e)}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/items/<item_id>', methods=['PUT'])
 @auth_required
 def update_item(item_id):
-    data = request.json
-    
-    item = items_collection.find_one({
-        '_id': ObjectId(item_id),
-        'user_id': request.user_id
-    })
-    
-    if not item:
-        return jsonify({'error': 'Item not found'}), 404
-    
-    update_data = {'updated_at': datetime.datetime.utcnow()}
-    if 'title' in data:
-        update_data['title'] = data['title']
-    if 'description' in data:
-        update_data['description'] = data['description']
-    
-    items_collection.update_one(
-        {'_id': ObjectId(item_id)},
-        {'$set': update_data}
-    )
-    
-    updated_item = items_collection.find_one({'_id': ObjectId(item_id)})
-    updated_item['_id'] = str(updated_item['_id'])
-    updated_item['created_at'] = updated_item['created_at'].isoformat()
-    
-    return jsonify(updated_item), 200
+    try:
+        data = request.json
+        
+        item = items_collection.find_one({
+            '_id': ObjectId(item_id),
+            'user_id': request.user_id
+        })
+        
+        if not item:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        update_data = {'updated_at': datetime.datetime.utcnow()}
+        if 'title' in data:
+            update_data['title'] = data['title']
+        if 'description' in data:
+            update_data['description'] = data['description']
+        
+        items_collection.update_one(
+            {'_id': ObjectId(item_id)},
+            {'$set': update_data}
+        )
+        
+        updated_item = items_collection.find_one({'_id': ObjectId(item_id)})
+        updated_item['_id'] = str(updated_item['_id'])
+        updated_item['created_at'] = updated_item['created_at'].isoformat()
+        
+        return jsonify(updated_item), 200
+    except Exception as e:
+        print(f"Update item error: {str(e)}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/items/<item_id>', methods=['DELETE'])
 @auth_required
 def delete_item(item_id):
-    result = items_collection.delete_one({
-        '_id': ObjectId(item_id),
-        'user_id': request.user_id
-    })
-    
-    if result.deleted_count == 0:
-        return jsonify({'error': 'Item not found'}), 404
-    
-    return jsonify({'message': 'Item deleted'}), 200
+    try:
+        result = items_collection.delete_one({
+            '_id': ObjectId(item_id),
+            'user_id': request.user_id
+        })
+        
+        if result.deleted_count == 0:
+            return jsonify({'error': 'Item not found'}), 404
+        
+        return jsonify({'message': 'Item deleted'}), 200
+    except Exception as e:
+        print(f"Delete item error: {str(e)}")
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 # CRUD Routes for People
 @app.route('/api/people', methods=['GET'])
@@ -299,15 +412,18 @@ def get_people():
         for person in people:
             person['_id'] = str(person['_id'])
             person['created_at'] = person['created_at'].isoformat()
+            if 'updated_at' in person:
+                person['updated_at'] = person['updated_at'].isoformat()
         return jsonify(people), 200
     except Exception as e:
         print(f"Get people error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/people', methods=['POST'])
 @auth_required
 def create_person():
-    """Add a new person to the people collection"""
+    """Add a new person to the people collection with automatic face embedding"""
     try:
         data = request.json
         name = data.get('name')
@@ -319,6 +435,15 @@ def create_person():
         if not name or not relation or not summary or not photo:
             return jsonify({'error': 'All fields are required'}), 400
         
+        # Generate face embedding automatically
+        embedding = None
+        embedding_error = None
+        
+        if face_app:
+            embedding, embedding_error = generate_face_embedding(photo)
+            if embedding_error:
+                print(f"Warning: Face embedding failed for {name}: {embedding_error}")
+        
         person = {
             'user_id': request.user_id,
             'name': name,
@@ -329,15 +454,26 @@ def create_person():
             'updated_at': datetime.datetime.utcnow()
         }
         
+        # Add embedding if successful
+        if embedding:
+            person['embedding'] = embedding
+            person['embedding_dim'] = len(embedding)
+        
         result = people_collection.insert_one(person)
         person['_id'] = str(result.inserted_id)
         person['created_at'] = person['created_at'].isoformat()
         person['updated_at'] = person['updated_at'].isoformat()
         
-        return jsonify(person), 201
+        # Add warning if embedding failed
+        response = {'person': person}
+        if embedding_error:
+            response['warning'] = f"Face recognition failed: {embedding_error}"
+        
+        return jsonify(response), 201
     except Exception as e:
         print(f"Create person error: {str(e)}")
-        return jsonify({'error': 'Failed to add person'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to add person', 'details': str(e)}), 500
 
 @app.route('/api/people/<person_id>', methods=['GET'])
 @auth_required
@@ -354,12 +490,14 @@ def get_person(person_id):
         
         person['_id'] = str(person['_id'])
         person['created_at'] = person['created_at'].isoformat()
-        person['updated_at'] = person['updated_at'].isoformat()
+        if 'updated_at' in person:
+            person['updated_at'] = person['updated_at'].isoformat()
         
         return jsonify(person), 200
     except Exception as e:
         print(f"Get person error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/people/<person_id>', methods=['PUT'])
 @auth_required
@@ -383,8 +521,18 @@ def update_person(person_id):
             update_data['relation'] = data['relation']
         if 'summary' in data:
             update_data['summary'] = data['summary']
+        
+        # If photo is updated, regenerate embedding
         if 'photo' in data:
             update_data['photo'] = data['photo']
+            
+            if face_app:
+                embedding, embedding_error = generate_face_embedding(data['photo'])
+                if embedding:
+                    update_data['embedding'] = embedding
+                    update_data['embedding_dim'] = len(embedding)
+                else:
+                    print(f"Warning: Face embedding update failed: {embedding_error}")
         
         people_collection.update_one(
             {'_id': ObjectId(person_id)},
@@ -394,12 +542,14 @@ def update_person(person_id):
         updated_person = people_collection.find_one({'_id': ObjectId(person_id)})
         updated_person['_id'] = str(updated_person['_id'])
         updated_person['created_at'] = updated_person['created_at'].isoformat()
-        updated_person['updated_at'] = updated_person['updated_at'].isoformat()
+        if 'updated_at' in updated_person:
+            updated_person['updated_at'] = updated_person['updated_at'].isoformat()
         
         return jsonify(updated_person), 200
     except Exception as e:
         print(f"Update person error: {str(e)}")
-        return jsonify({'error': 'Failed to update person'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to update person', 'details': str(e)}), 500
 
 @app.route('/api/people/<person_id>', methods=['DELETE'])
 @auth_required
@@ -417,8 +567,10 @@ def delete_person(person_id):
         return jsonify({'message': 'Person deleted successfully'}), 200
     except Exception as e:
         print(f"Delete person error: {str(e)}")
-        return jsonify({'error': 'Failed to delete person'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to delete person', 'details': str(e)}), 500
 
+# CRUD Routes for Conversations
 @app.route('/api/conversations', methods=['GET'])
 @auth_required
 def get_conversations():
@@ -446,7 +598,8 @@ def get_conversations():
         return jsonify(conversations), 200
     except Exception as e:
         print(f"Get conversations error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/conversations/<conversation_id>', methods=['GET'])
 @auth_required
@@ -472,7 +625,8 @@ def get_conversation(conversation_id):
         return jsonify(conversation), 200
     except Exception as e:
         print(f"Get conversation error: {str(e)}")
-        return jsonify({'error': 'Internal server error'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Internal server error', 'details': str(e)}), 500
 
 @app.route('/api/conversations', methods=['POST'])
 @auth_required
@@ -511,7 +665,8 @@ def create_conversation():
         return jsonify(conversation), 201
     except Exception as e:
         print(f"Create conversation error: {str(e)}")
-        return jsonify({'error': 'Failed to create conversation'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to create conversation', 'details': str(e)}), 500
 
 @app.route('/api/conversations/<conversation_id>', methods=['DELETE'])
 @auth_required
@@ -529,7 +684,25 @@ def delete_conversation(conversation_id):
         return jsonify({'message': 'Conversation deleted successfully'}), 200
     except Exception as e:
         print(f"Delete conversation error: {str(e)}")
-        return jsonify({'error': 'Failed to delete conversation'}), 500
+        traceback.print_exc()
+        return jsonify({'error': 'Failed to delete conversation', 'details': str(e)}), 500
+
+# Error handlers
+@app.errorhandler(404)
+def not_found(error):
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(500)
+def internal_error(error):
+    return jsonify({'error': 'Internal server error'}), 500
 
 if __name__ == '__main__':
-    app.run(debug=True, port=8080)
+    print("\n" + "="*60)
+    print("Starting Flask Server")
+    print("="*60)
+    print(f"MongoDB: {os.getenv('MONGODB_URI', 'Not configured')}")
+    print(f"Database: {os.getenv('DATABASE_NAME', 'Not configured')}")
+    print(f"Secret Key: {'Configured' if SECRET_KEY else 'Not configured'}")
+    print("="*60 + "\n")
+    
+    app.run(debug=True, port=8080, host='0.0.0.0')
