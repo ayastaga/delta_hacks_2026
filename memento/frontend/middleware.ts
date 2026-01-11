@@ -7,7 +7,10 @@ export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   // Define protected routes
-  const isProtectedRoute = pathname.startsWith("/dashboard");
+  const isProtectedRoute =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/conversations") ||
+    pathname.startsWith("/people");
   const isAuthRoute = pathname === "/login" || pathname === "/signup";
   const isHomePage = pathname === "/";
 
@@ -37,5 +40,12 @@ export function middleware(request: NextRequest) {
 
 // Configure which routes use this middleware
 export const config = {
-  matcher: ["/", "/dashboard/:path*", "/login", "/signup"],
+  matcher: [
+    "/",
+    "/dashboard/:path*",
+    "/conversations/:path*",
+    "/people/:path*",
+    "/login",
+    "/signup",
+  ],
 };
