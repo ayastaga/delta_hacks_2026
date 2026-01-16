@@ -1,6 +1,6 @@
 [![Watch the demo](https://img.youtube.com/vi/3HgkMA-f_Ik/0.jpg)](https://youtu.be/3HgkMA-f_Ik)
 
-# 🧠👓 Memento  
+# Memento  
 ### A Memory-Support System for Dementia Patients Powered by Voice, Vision, and AI
 
 Memento is an assistive technology platform designed to support individuals living with dementia by helping them recognize familiar faces, remember recent conversations, and reduce daily anxiety caused by memory loss.
