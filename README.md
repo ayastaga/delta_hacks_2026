@@ -1,3 +1,5 @@
+[![Watch the demo](https://img.youtube.com/vi/3HgkMA-f_Ik/0.jpg)](https://youtu.be/3HgkMA-f_Ik)
+
 # 🧠👓 Memento  
 ### A Memory-Support System for Dementia Patients Powered by Voice, Vision, and AI
 
